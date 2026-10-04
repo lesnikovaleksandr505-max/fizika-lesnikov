@@ -748,13 +748,38 @@ document.addEventListener("DOMContentLoaded", function () {
 
     setCloudMessage("Проверяю подключение…", true);
     try {
-      const client = window.supabase.createClient(cfg.url, cfg.key);
-      const { data, error } = await client.storage.from(cfg.bucket).list("", { limit: 1 });
-      if (error) throw error;
+      // Проверяем Supabase напрямую через REST API.
+      // Это не зависит от библиотеки supabase-js и лучше работает
+      // на GitHub Pages.
+      const endpoint = cfg.url + "/storage/v1/object/list/" + encodeURIComponent(cfg.bucket);
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "apikey": cfg.key,
+          "Authorization": "Bearer " + cfg.key,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ prefix: "", limit: 1, offset: 0 })
+      });
+
+      const text = await response.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch (_) {}
+
+      if (!response.ok) {
+        const detail = data?.message || data?.error || text || ("HTTP " + response.status);
+        throw new Error(detail + " (HTTP " + response.status + ")");
+      }
+
       setCloudMessage("✓ Подключение успешно. Supabase отвечает, хранилище доступно.", true);
     } catch (e) {
-      console.error("Supabase test:", e);
-      setCloudMessage("❌ Ошибка подключения: " + (e.message || "неизвестная ошибка") + ". Если URL и ключ верны — проверьте интернет-соединение.", false);
+      console.error("Supabase REST test:", e);
+      const msg = e && e.message ? e.message : "неизвестная ошибка";
+      if (msg === "Failed to fetch") {
+        setCloudMessage("❌ Браузер не смог обратиться к Supabase. Проверьте URL проекта и Publishable key. Если они верны, попробуйте открыть сайт в Chrome/Яндекс Браузере без VPN или блокировщиков.", false);
+      } else {
+        setCloudMessage("❌ " + msg, false);
+      }
     }
   }
 
